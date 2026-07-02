@@ -1,0 +1,3 @@
+export const modules = [
+  ['Dashboard','🏠','dashboard'],['Tuyển sinh','📝','admissions'],['Học viên cao học','🎓','students'],['Nghiên cứu sinh','👨‍🎓','phd'],['Giảng viên','👨‍🏫','faculty'],['Người hướng dẫn','📘','supervisors'],['Chương trình đào tạo','🏛️','programs'],['Học phần','📚','courses'],['Kế hoạch học tập','🗓️','plans'],['Đề tài','📁','research'],['Luận văn','📖','thesis'],['Luận án','📕','dissertation'],['Hội đồng','👥','councils'],['Lịch bảo vệ','🗓️','defense'],['Học phí','💳','tuition'],['Điểm','📊','grades'],['Minh chứng kiểm định','✅','evidence'],['Biểu mẫu','📄','forms'],['Báo cáo thống kê','📈','reports'],['Quản trị hệ thống','⚙️','settings']
+]

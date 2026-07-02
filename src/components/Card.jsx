@@ -1,0 +1,1 @@
+export default function Card({title,value,icon,trend}){return <div className="card"><div className="icon">{icon}</div><div className="card-title">{title}</div><div className="value">{value}</div><div className="trend">▲ {trend} so với kỳ trước</div></div>}
