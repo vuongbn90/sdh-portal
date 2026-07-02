@@ -1,0 +1,1 @@
+export default function GenericPage({ title }){return <><h1>{title}</h1><p>Module đang được phát triển theo kiến trúc GitHub + Vercel + Supabase.</p><section><h3>Chức năng dự kiến</h3><div className="features"><span>Danh sách</span><span>Thêm/Sửa/Xóa</span><span>Tìm kiếm</span><span>Import/Export</span><span>Upload hồ sơ</span><span>Báo cáo</span></div></section></>}

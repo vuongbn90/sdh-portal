@@ -1,0 +1,1 @@
+export default function Header(){return <header className="header"><button className="hamb">☰</button><b>HỆ THỐNG QUẢN LÝ SAU ĐẠI HỌC</b><div className="spacer"/><input placeholder="Tìm kiếm nhanh..."/><span>Bùi Nhất Vương</span><button>Thoát</button></header>}
