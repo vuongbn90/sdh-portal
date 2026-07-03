@@ -1,2 +1,0 @@
--- Included for reference. Use the schema already created in Supabase.
--- Sprint 1 reads these tables: students, phd_students, faculty, research_topics, councils, theses, news, tasks.
