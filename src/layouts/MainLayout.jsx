@@ -56,8 +56,8 @@ import RIS2Page from '../pages/RIS2/RIS2Page.jsx'
 import RIS21Page from '../pages/RIS21/RIS21Page.jsx'
 import DocumentGeneratorPage from '../pages/DocumentGenerator/DocumentGeneratorPage.jsx'
  import RIS21IntegratedPage from '../pages/RIS21/RIS21IntegratedPage.jsx'
-
-
+import AdmissionsPage from '../pages/Admissions/AdmissionsPage.jsx'
+import AdmissionsV3Page from '../modules/admissions/AdmissionsV3Page.jsx'
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
 
@@ -141,6 +141,8 @@ export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
     if (activeKey === 'ris21') return <RIS21Page />
     if (activeKey === 'document_generator') return <DocumentGeneratorPage />
     if (activeKey === 'scientific_profiles') return <RIS21IntegratedPage />
+    if (activeKey === 'admissions') return <AdmissionsPage />
+    if (activeKey === 'admissions') return <AdmissionsV3Page />
     return <ModulePage tableName={activeKey} title={titles[activeKey]} />
   }
 
