@@ -58,6 +58,9 @@ import DocumentGeneratorPage from '../pages/DocumentGenerator/DocumentGeneratorP
  import RIS21IntegratedPage from '../pages/RIS21/RIS21IntegratedPage.jsx'
 import AdmissionsPage from '../pages/Admissions/AdmissionsPage.jsx'
 import AdmissionsV3Page from '../modules/admissions/AdmissionsV3Page.jsx'
+import SupervisorsPage from '../pages/Supervisors/SupervisorsPage.jsx'
+import StudyPlansEnterprisePage from '../pages/StudyPlans/StudyPlansEnterprisePage.jsx'
+
 const { Header, Sider, Content } = Layout
 const { Text } = Typography
 
@@ -66,7 +69,7 @@ const menuItems = [
   { key: 'admissions', icon: <AuditOutlined />, label: 'Tuyển sinh' },
   { key: 'students', icon: <UserOutlined />, label: 'Học viên cao học' },
   { key: 'phd_students', icon: <SolutionOutlined />, label: 'Nghiên cứu sinh' },
-  { key: 'faculty', icon: <TeamOutlined />, label: 'Giảng viên' },
+  { key: 'faculty', icon: <TeamOutlined />, label: 'Thông tin Giảng viên' },
   { key: 'supervisors', icon: <TeamOutlined />, label: 'Người hướng dẫn' },
   { key: 'programs', icon: <BankOutlined />, label: 'Chương trình đào tạo' },
   { key: 'courses', icon: <BookOutlined />, label: 'Học phần' },
@@ -115,9 +118,11 @@ export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
     if (activeKey === 'students') return <StudentsPage />
     if (activeKey === 'phd_students') return <PhDStudentsPage />
     if (activeKey === 'faculty') return <FacultyPage />
+    if (activeKey === 'supervisors') return <SupervisorsPage />
     if (activeKey === 'programs') return <ProgramsPage />
     if (activeKey === 'courses') return <CoursesPage />
     if (activeKey === 'study_plans') return <StudyPlansPage />
+    if (activeKey === 'study_plans_enterprise') return <StudyPlansEnterprisePage />
     if (activeKey === 'enrollments' ) return <EnrollmentsPage />
     if (activeKey === 'grades') return <GradesPage />
     if (activeKey === 'theses') return <ThesisPage />
@@ -143,6 +148,7 @@ export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
     if (activeKey === 'scientific_profiles') return <RIS21IntegratedPage />
     if (activeKey === 'admissions') return <AdmissionsPage />
     if (activeKey === 'admissions') return <AdmissionsV3Page />
+    
     return <ModulePage tableName={activeKey} title={titles[activeKey]} />
   }
 
