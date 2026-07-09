@@ -3,88 +3,185 @@ import { supabase } from '../services/supabase'
 
 const AuthContext = createContext(null)
 
+const normalizeRole = (role) => String(role || 'guest').trim().toLowerCase()
+
+async function inferProfileFromEmail(authUser) {
+  if (!authUser?.email) return null
+
+  const email = authUser.email
+
+  const { data: student } = await supabase
+    .from('students')
+    .select('id,email,full_name,phone')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (student?.id) {
+    return {
+      auth_user_id: authUser.id,
+      email,
+      full_name: student.full_name || email,
+      phone: student.phone || null,
+      role: 'student',
+      student_id: student.id,
+      faculty_id: null,
+    }
+  }
+
+  const { data: faculty } = await supabase
+    .from('faculty')
+    .select('id,email,full_name,phone')
+    .eq('email', email)
+    .maybeSingle()
+
+  if (faculty?.id) {
+    return {
+      auth_user_id: authUser.id,
+      email,
+      full_name: faculty.full_name || email,
+      phone: faculty.phone || null,
+      role: 'faculty',
+      student_id: null,
+      faculty_id: faculty.id,
+    }
+  }
+
+  return {
+    auth_user_id: authUser.id,
+    email,
+    full_name: authUser.user_metadata?.full_name || email,
+    role: email === 'admin@vaa.edu.vn' ? 'admin' : 'student',
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null)
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
+  const [permissions, setPermissions] = useState([])
   const [loading, setLoading] = useState(true)
 
   const loadProfile = async (authUser) => {
     if (!authUser?.id) {
       setProfile(null)
+      setPermissions([])
       return null
     }
 
-    const { data, error } = await supabase
+    let currentProfile = null
+
+    // 1) Ưu tiên tìm bằng auth_user_id
+    const { data: byAuth, error: byAuthError } = await supabase
       .from('profiles')
       .select('*')
       .eq('auth_user_id', authUser.id)
       .maybeSingle()
 
-    if (error) {
-      console.error('Load profile error:', error)
-      setProfile(null)
-      return null
+    if (byAuthError) console.error(byAuthError)
+    currentProfile = byAuth || null
+
+    // 2) Nếu chưa có auth_user_id, tìm bằng email rồi cập nhật auth_user_id
+    if (!currentProfile && authUser.email) {
+      const { data: byEmail, error: byEmailError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', authUser.email)
+        .maybeSingle()
+
+      if (byEmailError) console.error(byEmailError)
+
+      if (byEmail?.id) {
+        const { data: updated, error: updateError } = await supabase
+          .from('profiles')
+          .update({ auth_user_id: authUser.id, role: normalizeRole(byEmail.role) })
+          .eq('id', byEmail.id)
+          .select('*')
+          .single()
+
+        if (updateError) console.error(updateError)
+        currentProfile = updated || { ...byEmail, auth_user_id: authUser.id, role: normalizeRole(byEmail.role) }
+      }
     }
 
-    setProfile(data)
-    return data
+    // 3) Nếu chưa có profile thì tự tạo theo email khớp students/faculty
+    if (!currentProfile) {
+      const payload = await inferProfileFromEmail(authUser)
+      const { data: created, error: createError } = await supabase
+        .from('profiles')
+        .insert([payload])
+        .select('*')
+        .single()
+
+      if (createError) console.error(createError)
+      currentProfile = created || payload
+    }
+
+    // Chuẩn hóa role chữ thường để MainLayout nhận đúng student/faculty/admin
+    if (currentProfile?.id && currentProfile.role !== normalizeRole(currentProfile.role)) {
+      const { data: normalized } = await supabase
+        .from('profiles')
+        .update({ role: normalizeRole(currentProfile.role) })
+        .eq('id', currentProfile.id)
+        .select('*')
+        .single()
+      currentProfile = normalized || { ...currentProfile, role: normalizeRole(currentProfile.role) }
+    } else if (currentProfile) {
+      currentProfile = { ...currentProfile, role: normalizeRole(currentProfile.role) }
+    }
+
+    setProfile(currentProfile || null)
+
+    if (currentProfile?.id) {
+      const { data: access, error: accessError } = await supabase
+        .from('v_user_access')
+        .select('permission_code')
+        .eq('profile_id', currentProfile.id)
+
+      if (accessError) console.error(accessError)
+      const list = [...new Set((access || []).map((x) => x.permission_code).filter(Boolean))]
+      setPermissions(list)
+    } else {
+      setPermissions([])
+    }
+
+    return currentProfile
   }
 
   useEffect(() => {
     let mounted = true
 
-    async function init() {
-      setLoading(true)
-      const { data } = await supabase.auth.getSession()
+    supabase.auth.getUser().then(async ({ data }) => {
       if (!mounted) return
-
-      setSession(data.session)
-      setUser(data.session?.user || null)
-      if (data.session?.user) await loadProfile(data.session.user)
+      const authUser = data?.user || null
+      setUser(authUser)
+      await loadProfile(authUser)
       setLoading(false)
-    }
+    })
 
-    init()
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession)
-      setUser(newSession?.user || null)
-      if (newSession?.user) await loadProfile(newSession.user)
-      else setProfile(null)
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const authUser = session?.user || null
+      setUser(authUser)
+      await loadProfile(authUser)
       setLoading(false)
     })
 
     return () => {
       mounted = false
-      listener?.subscription?.unsubscribe()
+      sub?.subscription?.unsubscribe?.()
     }
   }, [])
 
-  const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error }
-    if (data?.user) await loadProfile(data.user)
-    return { data }
-  }
-
-  const signOut = async () => {
-    await supabase.auth.signOut()
-    setSession(null)
-    setUser(null)
-    setProfile(null)
-  }
-
   const value = useMemo(() => ({
-    session,
     user,
     profile,
+    role: normalizeRole(profile?.role),
+    studentId: profile?.student_id || null,
+    facultyId: profile?.faculty_id || null,
+    permissions,
     loading,
-    signIn,
-    signOut,
+    hasPermission: (code) => permissions.includes(code) || permissions.includes('admin.full_access'),
+    signOut: () => supabase.auth.signOut(),
     reloadProfile: () => loadProfile(user),
-    role: profile?.role || 'guest',
-  }), [session, user, profile, loading])
+  }), [user, profile, permissions, loading])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

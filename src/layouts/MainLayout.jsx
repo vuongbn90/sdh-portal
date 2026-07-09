@@ -60,8 +60,15 @@ import AdmissionsPage from '../pages/Admissions/AdmissionsPage.jsx'
 import AdmissionsV3Page from '../modules/admissions/AdmissionsV3Page.jsx'
 import SupervisorsPage from '../pages/Supervisors/SupervisorsPage.jsx'
 import StudyPlansEnterprisePage from '../pages/StudyPlans/StudyPlansEnterprisePage.jsx'
-
+import CourseRegistrationPage from '../pages/CourseRegistration/CourseRegistrationPage.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
+import StudentPortalPage from '../pages/Portal/StudentPortalPage.jsx'
+import FacultyPortalPage from '../pages/Portal/FacultyPortalPage.jsx'
+import FacultyProfilePage from '../pages/FacultyProfile/FacultyProfilePage.jsx'
+import CourseSyllabusPage from '../pages/CourseSyllabus/CourseSyllabusPage.jsx'
+import CurriculumMatrixPage from '../pages/CurriculumMatrix/CurriculumMatrixPage.jsx'
 const { Header, Sider, Content } = Layout
+
 const { Text } = Typography
 
 const menuItems = [
@@ -74,6 +81,7 @@ const menuItems = [
   { key: 'programs', icon: <BankOutlined />, label: 'Chương trình đào tạo' },
   { key: 'courses', icon: <BookOutlined />, label: 'Học phần' },
   { key: 'study_plans', icon: <ScheduleOutlined />, label: 'Kế hoạch học tập' },
+  { key: 'course_registration', icon: <BookOutlined />, label: 'Học viên đăng ký học phần' },
   { key: 'enrollments', icon: <BookOutlined />, label: 'Đăng ký học phần' },
   { key: 'research_topics', icon: <ReadOutlined />, label: 'Đề tài' },
   { key: 'theses', icon: <FilePdfOutlined />, label: 'Luận văn / Luận án' },
@@ -94,10 +102,10 @@ const menuItems = [
   { key: 'outcome_assessment', icon: <FileDoneOutlined />, label: 'Đo lường CDR' },
   { key: 'curriculum_analytics', icon: <BarChartOutlined />, label: 'Phân tích chương trình đào tạo' },
   { key: 'cqI', icon: <AuditOutlined />, label: 'CQI' },
-  
+  { key: 'course_syllabus', label: 'Đề cương học phần' },
    { key: 'ris21', icon: <UserOutlined />, label: 'RIS / LLKH 2.1' },
-   
-
+   { key: 'faculty_profile', icon: <UserOutlined />, label: 'Hồ sơ giảng viên' },
+{ key: 'curriculum_matrix', icon: <BarChartOutlined />, label: 'Ma trận CTĐT' },
 ]
 
 const titles = Object.fromEntries(menuItems.map((item) => [item.key, item.label]))
@@ -105,7 +113,7 @@ const titles = Object.fromEntries(menuItems.map((item) => [item.key, item.label]
 export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeKey, setActiveKey] = useState('dashboard')
-
+const { role } = useAuth()
   const userMenu = {
     items: [
       { key: 'profile', label: 'Hồ sơ cá nhân', icon: <UserOutlined /> },
@@ -118,11 +126,13 @@ export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
     if (activeKey === 'students') return <StudentsPage />
     if (activeKey === 'phd_students') return <PhDStudentsPage />
     if (activeKey === 'faculty') return <FacultyPage />
+    if (activeKey === 'faculty_profile') return <FacultyProfilePage />
     if (activeKey === 'supervisors') return <SupervisorsPage />
     if (activeKey === 'programs') return <ProgramsPage />
     if (activeKey === 'courses') return <CoursesPage />
     if (activeKey === 'study_plans') return <StudyPlansPage />
     if (activeKey === 'study_plans_enterprise') return <StudyPlansEnterprisePage />
+    if (activeKey === 'course_registration') return <CourseRegistrationPage />
     if (activeKey === 'enrollments' ) return <EnrollmentsPage />
     if (activeKey === 'grades') return <GradesPage />
     if (activeKey === 'theses') return <ThesisPage />
@@ -148,10 +158,17 @@ export default function MainLayout({ user, darkMode, onToggleDark, onLogout }) {
     if (activeKey === 'scientific_profiles') return <RIS21IntegratedPage />
     if (activeKey === 'admissions') return <AdmissionsPage />
     if (activeKey === 'admissions') return <AdmissionsV3Page />
-    
+    if (activeKey === 'course_syllabus') return <CourseSyllabusPage />
+     if (activeKey === 'curriculum_matrix') return <CurriculumMatrixPage />
     return <ModulePage tableName={activeKey} title={titles[activeKey]} />
   }
+if (role === 'student' || role === 'phd_student') {
+  return <StudentPortalPage />
+}
 
+if (role === 'faculty') {
+  return <FacultyPortalPage />
+}
   return (
     <Layout className="app-shell">
       <Sider width={276} collapsed={collapsed} className="app-sider">

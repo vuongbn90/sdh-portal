@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { ConfigProvider, theme } from 'antd'
 import LoginPage from './pages/LoginPage.jsx'
 import MainLayout from './layouts/MainLayout.jsx'
-
 function App() {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('sdh_user')
