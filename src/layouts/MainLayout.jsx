@@ -171,7 +171,13 @@ if (role === 'faculty') {
 }
   return (
     <Layout className="app-shell">
-      <Sider width={276} collapsed={collapsed} className="app-sider">
+      <Sider
+    width={276}
+    collapsedWidth={80}
+    collapsed={collapsed}
+    trigger={null}
+    className="app-sider"
+>
         <div className="brand-block">
           <div className="brand-logo">VAA</div>
           {!collapsed && (
