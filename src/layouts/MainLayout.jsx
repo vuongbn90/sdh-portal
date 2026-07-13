@@ -63,10 +63,11 @@ import StudyPlansEnterprisePage from '../pages/StudyPlans/StudyPlansEnterprisePa
 import CourseRegistrationPage from '../pages/CourseRegistration/CourseRegistrationPage.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import StudentPortalPage from '../pages/Portal/StudentPortalPage.jsx'
-import FacultyPortalPage from '../pages/Portal/FacultyPortalPage.jsx'
+
 import FacultyProfilePage from '../pages/FacultyProfile/FacultyProfilePage.jsx'
 import CourseSyllabusPage from '../pages/CourseSyllabus/CourseSyllabusPage.jsx'
 import CurriculumMatrixPage from '../pages/CurriculumMatrix/CurriculumMatrixPage.jsx'
+import FacultyPortalPage from '../pages/Portal/FacultyPortal/FacultyPortalPage.jsx'
 const { Header, Sider, Content } = Layout
 
 const { Text } = Typography
@@ -183,7 +184,7 @@ if (role === 'faculty') {
           {!collapsed && (
             <div>
               <div className="brand-title">HỌC VIỆN HÀNG KHÔNG</div>
-              <div className="brand-subtitle">VIỆN ĐÀO TẠO SAU ĐẠI HỌC</div>
+              <div className="brand-subtitle"> HỆ THỐNG QUẢN LÝ ĐÀO TẠO SAU ĐẠI HỌC</div>
             </div>
           )}
         </div>

@@ -1,19 +1,15 @@
 import {
-  DeleteOutlined,
-  DownloadOutlined,
+  BookOutlined,
   EditOutlined,
-  FileAddOutlined,
+  FileDoneOutlined,
   PlusOutlined,
   ReloadOutlined,
   SaveOutlined,
-  SearchOutlined,
-  UserOutlined,
+  TeamOutlined,
 } from '@ant-design/icons'
 import {
-  Avatar,
   Button,
   Card,
-  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -28,488 +24,685 @@ import {
   Typography,
   message,
 } from 'antd'
-import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../services/supabase'
-import { exportCsv } from '../../utils/exportCsv'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 const { Title, Text } = Typography
 
-const tables = {
-  faculty: 'faculty',
-  education: 'faculty_education',
-  employment: 'faculty_employment',
-  languages: 'faculty_languages',
-  certificates: 'faculty_certificates',
-  awards: 'faculty_awards',
-  documents: 'faculty_documents',
-}
-
 function pick(row, keys, fallback = '') {
-  for (const key of keys) if (row?.[key] !== undefined && row?.[key] !== null) return row[key]
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null) return row[key]
+  }
   return fallback
 }
 
-function normalizeDate(value) {
-  if (!value) return null
-  if (dayjs.isDayjs(value)) return value.format('YYYY-MM-DD')
-  return value
-}
+export default function FacultyPortalPage() {
+  const { user } = useAuth()
 
-function toDatePickerValue(value) {
-  return value ? dayjs(value) : null
-}
+  const currentEmail =
+    user?.email ||
+    user?.user_email ||
+    user?.username ||
+    user?.account_email ||
+    ''
 
-export default function FacultyProfilePage() {
-  const [faculty, setFaculty] = useState([])
-  const [selectedFacultyId, setSelectedFacultyId] = useState(null)
+  const [faculty, setFaculty] = useState(null)
+  const [publications, setPublications] = useState([])
+  const [projects, setProjects] = useState([])
+  const [supervisions, setSupervisions] = useState([])
   const [loading, setLoading] = useState(false)
-  const [keyword, setKeyword] = useState('')
-  const [activeModal, setActiveModal] = useState(null)
+
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [modalType, setModalType] = useState(null)
   const [editing, setEditing] = useState(null)
-  const [education, setEducation] = useState([])
-  const [employment, setEmployment] = useState([])
-  const [languages, setLanguages] = useState([])
-  const [certificates, setCertificates] = useState([])
-  const [awards, setAwards] = useState([])
-  const [documents, setDocuments] = useState([])
+
   const [profileForm] = Form.useForm()
-  const [childForm] = Form.useForm()
+  const [itemForm] = Form.useForm()
 
-  const currentFaculty = useMemo(
-    () => faculty.find((item) => item.id === selectedFacultyId) || null,
-    [faculty, selectedFacultyId],
-  )
+  const facultyId = faculty?.id
 
-  const facultyOptions = faculty.map((f) => ({
-    value: f.id,
-    label: `${pick(f, ['faculty_code'], '') ? `${pick(f, ['faculty_code'], '')} - ` : ''}${pick(f, ['full_name', 'name'], '')}`,
-  }))
-
-  const load = async () => {
+  const loadFaculty = async () => {
     setLoading(true)
-    const { data: facultyData, error: facultyError } = await supabase
-      .from(tables.faculty)
+
+    let { data, error } = await supabase
+      .from('faculty')
       .select('*')
-      .order('full_name', { ascending: true })
+      .eq('email', currentEmail)
+      .maybeSingle()
 
-    if (facultyError) message.error(facultyError.message)
-    const list = facultyData || []
-    setFaculty(list)
+    if (error) {
+      message.error(error.message)
+      setLoading(false)
+      return
+    }
 
-    const nextFacultyId = selectedFacultyId || list[0]?.id || null
-    if (!selectedFacultyId && nextFacultyId) setSelectedFacultyId(nextFacultyId)
+    if (!data) {
+      const fullName =
+        user?.full_name ||
+        user?.name ||
+        currentEmail?.split('@')?.[0] ||
+        'Giảng viên'
 
-    if (nextFacultyId) await loadDetails(nextFacultyId)
+      const insertResult = await supabase
+        .from('faculty')
+        .insert([
+          {
+            email: currentEmail,
+            full_name: fullName,
+            name: fullName,
+            degree: '',
+            academic_rank: '',
+            phone: '',
+            department: '',
+          },
+        ])
+        .select('*')
+        .single()
+
+      if (insertResult.error) {
+        message.error(insertResult.error.message)
+        setLoading(false)
+        return
+      }
+
+      data = insertResult.data
+    }
+
+    setFaculty(data)
+    await loadDetails(data.id)
     setLoading(false)
   }
 
-  const loadDetails = async (facultyId) => {
-    const [edu, emp, lang, cert, award, doc] = await Promise.all([
-      supabase.from(tables.education).select('*').eq('faculty_id', facultyId).order('from_year', { ascending: false }),
-      supabase.from(tables.employment).select('*').eq('faculty_id', facultyId).order('from_date', { ascending: false }),
-      supabase.from(tables.languages).select('*').eq('faculty_id', facultyId).order('language', { ascending: true }),
-      supabase.from(tables.certificates).select('*').eq('faculty_id', facultyId).order('issue_date', { ascending: false }),
-      supabase.from(tables.awards).select('*').eq('faculty_id', facultyId).order('award_date', { ascending: false }),
-      supabase.from(tables.documents).select('*').eq('faculty_id', facultyId).order('uploaded_at', { ascending: false }),
+  const loadDetails = async (id = facultyId) => {
+    if (!id) return
+
+    const [pubRes, projectRes, supRes] = await Promise.all([
+      supabase
+        .from('faculty_publications')
+        .select('*')
+        .eq('faculty_id', id)
+        .order('year', { ascending: false }),
+
+      supabase
+        .from('faculty_projects')
+        .select('*')
+        .eq('faculty_id', id)
+        .order('start_year', { ascending: false }),
+
+      supabase
+        .from('faculty_supervisions')
+        .select('*')
+        .eq('faculty_id', id)
+        .order('year', { ascending: false }),
     ])
 
-    ;[edu, emp, lang, cert, award, doc].forEach((result) => {
-      if (result.error) message.error(result.error.message)
-    })
+    if (pubRes.error) message.error(pubRes.error.message)
+    if (projectRes.error) message.error(projectRes.error.message)
+    if (supRes.error) message.error(supRes.error.message)
 
-    setEducation(edu.data || [])
-    setEmployment(emp.data || [])
-    setLanguages(lang.data || [])
-    setCertificates(cert.data || [])
-    setAwards(award.data || [])
-    setDocuments(doc.data || [])
+    setPublications(pubRes.data || [])
+    setProjects(projectRes.data || [])
+    setSupervisions(supRes.data || [])
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (currentEmail) loadFaculty()
+  }, [currentEmail])
 
-  const onSelectFaculty = async (facultyId) => {
-    setSelectedFacultyId(facultyId)
-    setLoading(true)
-    await loadDetails(facultyId)
-    setLoading(false)
-  }
+  const stats = useMemo(() => {
+    return {
+      publications: publications.length,
+      q12: publications.filter((x) => ['Q1', 'Q2'].includes(x.quartile)).length,
+      projects: projects.length,
+      supervisions: supervisions.length,
+      points: publications.reduce((sum, x) => sum + Number(x.points || 0), 0),
+    }
+  }, [publications, projects, supervisions])
 
   const openProfile = () => {
-    profileForm.setFieldsValue(currentFaculty || {})
-    setActiveModal('profile')
+    profileForm.setFieldsValue(faculty || {})
+    setProfileOpen(true)
   }
 
   const saveProfile = async () => {
     const values = await profileForm.validateFields()
-    const protectedFields = ['faculty_code', 'full_name', 'name', 'id', 'created_at']
-    protectedFields.forEach((key) => delete values[key])
 
-    const { error } = await supabase
-      .from(tables.faculty)
-      .update({ ...values, updated_at: new Date().toISOString() })
-      .eq('id', selectedFacultyId)
-
-    if (error) return message.error(error.message)
-    message.success('Đã cập nhật hồ sơ giảng viên')
-    setActiveModal(null)
-    await load()
-  }
-
-  const openChild = (type, record = null) => {
-    setEditing(record)
-    setActiveModal(type)
-    childForm.resetFields()
-
-    const value = record ? { ...record } : {}
-    ;['from_date', 'to_date', 'issue_date', 'expiry_date', 'award_date'].forEach((field) => {
-      if (value[field]) value[field] = toDatePickerValue(value[field])
-    })
-    childForm.setFieldsValue(value)
-  }
-
-  const saveChild = async (type) => {
-    const values = await childForm.validateFields()
-    ;['from_date', 'to_date', 'issue_date', 'expiry_date', 'award_date'].forEach((field) => {
-      if (values[field]) values[field] = normalizeDate(values[field])
-    })
-
-    const table = modalTableMap[type]
     const payload = {
       ...values,
-      faculty_id: selectedFacultyId,
+      updated_at: new Date().toISOString(),
+    }
+
+    delete payload.id
+    delete payload.created_at
+    delete payload.email
+    delete payload.faculty_code
+    delete payload.full_name
+    delete payload.name
+
+    const { error } = await supabase
+      .from('faculty')
+      .update(payload)
+      .eq('id', facultyId)
+
+    if (error) return message.error(error.message)
+
+    message.success('Đã cập nhật hồ sơ')
+    setProfileOpen(false)
+    await loadFaculty()
+  }
+
+  const openItem = (type, record = null) => {
+    setModalType(type)
+    setEditing(record)
+    itemForm.resetFields()
+    if (record) itemForm.setFieldsValue(record)
+  }
+
+  const saveItem = async () => {
+    const values = await itemForm.validateFields()
+
+    const tableMap = {
+      publication: 'faculty_publications',
+      project: 'faculty_projects',
+      supervision: 'faculty_supervisions',
+    }
+
+    const table = tableMap[modalType]
+
+    const payload = {
+      ...values,
+      faculty_id: facultyId,
       updated_at: new Date().toISOString(),
     }
 
     let result
-    if (editing?.id) result = await supabase.from(table).update(payload).eq('id', editing.id)
-    else result = await supabase.from(table).insert([{ ...payload, created_at: new Date().toISOString() }])
+
+    if (editing?.id) {
+      result = await supabase.from(table).update(payload).eq('id', editing.id)
+    } else {
+      result = await supabase
+        .from(table)
+        .insert([{ ...payload, created_at: new Date().toISOString() }])
+    }
 
     if (result.error) return message.error(result.error.message)
-    message.success('Đã lưu')
-    setActiveModal(null)
+
+    message.success('Đã lưu dữ liệu')
+    setModalType(null)
     setEditing(null)
-    await loadDetails(selectedFacultyId)
+    await loadDetails()
   }
 
-  const removeChild = async (table, id) => {
+  const deleteItem = async (table, id) => {
     const { error } = await supabase.from(table).delete().eq('id', id)
     if (error) return message.error(error.message)
+
     message.success('Đã xóa')
-    await loadDetails(selectedFacultyId)
+    await loadDetails()
   }
 
-  const filteredFaculty = useMemo(() => {
-    const q = keyword.trim().toLowerCase()
-    if (!q) return faculty
-    return faculty.filter((f) => JSON.stringify(f).toLowerCase().includes(q))
-  }, [faculty, keyword])
-
-  const profileStats = {
-    education: education.length,
-    employment: employment.length,
-    languages: languages.length,
-    documents: documents.length,
-  }
-
-  const facultyColumns = [
-    { title: 'Mã GV', dataIndex: 'faculty_code', width: 110 },
-    { title: 'Họ tên', dataIndex: 'full_name', render: (v, r) => <b>{pick(r, ['full_name', 'name'], v)}</b> },
-    { title: 'Học hàm', dataIndex: 'academic_rank', width: 120 },
-    { title: 'Học vị', dataIndex: 'degree', width: 120 },
-    { title: 'Email', dataIndex: 'email' },
-    { title: 'Điện thoại', dataIndex: 'phone', width: 130 },
-    { title: 'Thao tác', width: 120, render: (_, r) => <Button onClick={() => onSelectFaculty(r.id)}>Mở hồ sơ</Button> },
+  const publicationColumns = [
+    { title: 'Tên công bố', dataIndex: 'title', render: (v) => <b>{v}</b> },
+    { title: 'Tạp chí/Hội thảo', dataIndex: 'journal' },
+    { title: 'Năm', dataIndex: 'year', width: 90 },
+    {
+      title: 'Q',
+      dataIndex: 'quartile',
+      width: 90,
+      render: (v) => v ? <Tag color={['Q1', 'Q2'].includes(v) ? 'green' : 'blue'}>{v}</Tag> : '',
+    },
+    { title: 'DOI', dataIndex: 'doi' },
+    { title: 'Điểm', dataIndex: 'points', width: 90 },
+    {
+      title: 'Thao tác',
+      width: 180,
+      render: (_, r) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openItem('publication', r)}>
+            Sửa
+          </Button>
+          <Popconfirm title="Xóa công bố này?" onConfirm={() => deleteItem('faculty_publications', r.id)}>
+            <Button size="small" danger>
+              Xóa
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ]
 
+  const projectColumns = [
+    { title: 'Tên đề tài', dataIndex: 'project_name', render: (v) => <b>{v}</b> },
+    { title: 'Vai trò', dataIndex: 'role' },
+    { title: 'Cấp', dataIndex: 'level' },
+    { title: 'Từ năm', dataIndex: 'start_year', width: 100 },
+    { title: 'Đến năm', dataIndex: 'end_year', width: 100 },
+    { title: 'Trạng thái', dataIndex: 'status' },
+    {
+      title: 'Thao tác',
+      width: 180,
+      render: (_, r) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openItem('project', r)}>
+            Sửa
+          </Button>
+          <Popconfirm title="Xóa đề tài này?" onConfirm={() => deleteItem('faculty_projects', r.id)}>
+            <Button size="small" danger>
+              Xóa
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  const supervisionColumns = [
+    { title: 'Người học', dataIndex: 'student_name', render: (v) => <b>{v}</b> },
+    { title: 'Loại', dataIndex: 'student_type' },
+    { title: 'Tên đề tài', dataIndex: 'thesis_title' },
+    { title: 'Vai trò', dataIndex: 'role' },
+    { title: 'Năm', dataIndex: 'year', width: 90 },
+    { title: 'Trạng thái', dataIndex: 'status' },
+    {
+      title: 'Thao tác',
+      width: 180,
+      render: (_, r) => (
+        <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => openItem('supervision', r)}>
+            Sửa
+          </Button>
+          <Popconfirm title="Xóa hướng dẫn này?" onConfirm={() => deleteItem('faculty_supervisions', r.id)}>
+            <Button size="small" danger>
+              Xóa
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ]
+
+  if (!currentEmail) {
+    return <Card>Không xác định được email đăng nhập của giảng viên.</Card>
+  }
+
   return (
-    <>
-      <Title level={2} className="page-title">Faculty Profile & Academic CV</Title>
-      <div className="page-subtitle">Quản lý hồ sơ giảng viên, quá trình đào tạo, công tác, ngoại ngữ, chứng chỉ, giải thưởng và hồ sơ số.</div>
+    <div>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <Title level={2} style={{ marginBottom: 4 }}>Cổng thông tin giảng viên</Title>
+          <Text>Xin chào, <b>{pick(faculty, ['full_name', 'name'], user?.full_name || currentEmail)}</b></Text>
+        </div>
 
-      <Card className="toolbar-card" style={{ marginBottom: 16 }}>
-        <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            value={selectedFacultyId}
-            onChange={onSelectFaculty}
-            options={facultyOptions}
-            placeholder="Chọn giảng viên"
-            style={{ minWidth: 380 }}
-          />
-          <Space>
-            <Input prefix={<SearchOutlined />} placeholder="Tìm giảng viên..." value={keyword} onChange={(e) => setKeyword(e.target.value)} style={{ width: 280 }} />
-            <Button icon={<ReloadOutlined />} onClick={load}>Tải lại</Button>
-            <Button icon={<DownloadOutlined />} onClick={() => exportCsv('faculty-profile.csv', filteredFaculty)}>Xuất CSV</Button>
-          </Space>
-        </Space>
-      </Card>
-
-      <Card style={{ marginBottom: 16 }}>
-        <Space align="start" size="large" wrap>
-          <Avatar size={96} src={currentFaculty?.avatar_url} icon={<UserOutlined />} />
-          <div style={{ minWidth: 300 }}>
-            <Title level={3} style={{ marginBottom: 4 }}>{pick(currentFaculty, ['full_name', 'name'], 'Chưa chọn giảng viên')}</Title>
-            <Text type="secondary">{pick(currentFaculty, ['faculty_code'], '')}</Text><br />
-            <Text>{pick(currentFaculty, ['academic_rank'], '')} {pick(currentFaculty, ['degree'], '')}</Text><br />
-            <Text>Email: {pick(currentFaculty, ['email'], '')}</Text><br />
-            <Text>Điện thoại: {pick(currentFaculty, ['phone'], '')}</Text>
-          </div>
-          <Space>
-            <Button type="primary" icon={<EditOutlined />} onClick={openProfile} disabled={!selectedFacultyId}>Cập nhật hồ sơ</Button>
-          </Space>
-        </Space>
-      </Card>
+        <Button onClick={() => window.location.reload()}>
+          Tải lại
+        </Button>
+      </Space>
 
       <div className="stat-grid">
-        <Card className="stat-card"><Statistic title="Quá trình đào tạo" value={profileStats.education} /></Card>
-        <Card className="stat-card"><Statistic title="Quá trình công tác" value={profileStats.employment} /></Card>
-        <Card className="stat-card"><Statistic title="Ngoại ngữ" value={profileStats.languages} /></Card>
-        <Card className="stat-card"><Statistic title="Hồ sơ số" value={profileStats.documents} /></Card>
+        <Card className="stat-card">
+          <Statistic title="Mã GV" value={pick(faculty, ['faculty_code'], '—')} prefix={<TeamOutlined />} />
+        </Card>
+        <Card className="stat-card">
+          <Statistic title="Công bố" value={stats.publications} prefix={<FileDoneOutlined />} />
+        </Card>
+        <Card className="stat-card">
+          <Statistic title="Q1/Q2" value={stats.q12} prefix={<BookOutlined />} />
+        </Card>
+        <Card className="stat-card">
+          <Statistic title="Hướng dẫn" value={stats.supervisions} prefix={<TeamOutlined />} />
+        </Card>
       </div>
 
-      <Tabs items={[
-        {
-          key: 'faculty-list',
-          label: 'Danh sách giảng viên',
-          children: <Card className="table-card"><Table rowKey="id" loading={loading} columns={facultyColumns} dataSource={filteredFaculty} pagination={{ pageSize: 8 }} scroll={{ x: 1000 }} /></Card>,
-        },
-        {
-          key: 'profile',
-          label: 'Thông tin cá nhân',
-          children: <ProfileInfo faculty={currentFaculty} />,
-        },
-        {
-          key: 'education',
-          label: 'Quá trình đào tạo',
-          children: <DataTab loading={loading} data={education} columns={educationColumns(openChild, removeChild)} onAdd={() => openChild('education')} onExport={() => exportCsv('faculty-education.csv', education)} />,
-        },
-        {
-          key: 'employment',
-          label: 'Quá trình công tác',
-          children: <DataTab loading={loading} data={employment} columns={employmentColumns(openChild, removeChild)} onAdd={() => openChild('employment')} onExport={() => exportCsv('faculty-employment.csv', employment)} />,
-        },
-        {
-          key: 'languages',
-          label: 'Ngoại ngữ',
-          children: <DataTab loading={loading} data={languages} columns={languageColumns(openChild, removeChild)} onAdd={() => openChild('language')} onExport={() => exportCsv('faculty-languages.csv', languages)} />,
-        },
-        {
-          key: 'certificates',
-          label: 'Chứng chỉ',
-          children: <DataTab loading={loading} data={certificates} columns={certificateColumns(openChild, removeChild)} onAdd={() => openChild('certificate')} onExport={() => exportCsv('faculty-certificates.csv', certificates)} />,
-        },
-        {
-          key: 'awards',
-          label: 'Giải thưởng',
-          children: <DataTab loading={loading} data={awards} columns={awardColumns(openChild, removeChild)} onAdd={() => openChild('award')} onExport={() => exportCsv('faculty-awards.csv', awards)} />,
-        },
-        {
-          key: 'documents',
-          label: 'Hồ sơ số',
-          children: <DataTab loading={loading} data={documents} columns={documentColumns(openChild, removeChild)} onAdd={() => openChild('document')} onExport={() => exportCsv('faculty-documents.csv', documents)} />,
-        },
-      ]} />
+      <Tabs
+        items={[
+          {
+            key: 'profile',
+            label: 'Thông tin giảng viên',
+            children: (
+              <Card
+                extra={
+                  <Button type="primary" icon={<EditOutlined />} onClick={openProfile}>
+                    Cập nhật thông tin
+                  </Button>
+                }
+              >
+                <Table
+                  rowKey={(r) => r[0]}
+                  showHeader={false}
+                  pagination={false}
+                  columns={[
+                    { dataIndex: 0, width: 220, render: (v) => <b>{v}</b> },
+                    { dataIndex: 1 },
+                    { dataIndex: 2, width: 220, render: (v) => <b>{v}</b> },
+                    { dataIndex: 3 },
+                  ]}
+                  dataSource={[
+                    ['Mã GV', pick(faculty, ['faculty_code'], ''), 'Họ tên', pick(faculty, ['full_name', 'name'], '')],
+                    ['Học hàm', pick(faculty, ['academic_rank'], ''), 'Học vị', pick(faculty, ['degree'], '')],
+                    ['Email', pick(faculty, ['email'], ''), 'Điện thoại', pick(faculty, ['phone'], '')],
+                    ['Chuyên môn', pick(faculty, ['specialization'], ''), 'Đơn vị', pick(faculty, ['department'], '')],
+                    ['ORCID', pick(faculty, ['orcid'], ''), 'Scopus ID', pick(faculty, ['scopus_id'], '')],
+                    ['Google Scholar', pick(faculty, ['google_scholar'], ''), 'Hướng nghiên cứu', pick(faculty, ['research_interests'], '')],
+                  ]}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'publications',
+            label: 'Công bố khoa học',
+            children: (
+              <DataTab
+                loading={loading}
+                data={publications}
+                columns={publicationColumns}
+                onAdd={() => openItem('publication')}
+                buttonText="Thêm công bố"
+              />
+            ),
+          },
+          {
+            key: 'projects',
+            label: 'Đề tài',
+            children: (
+              <DataTab
+                loading={loading}
+                data={projects}
+                columns={projectColumns}
+                onAdd={() => openItem('project')}
+                buttonText="Thêm đề tài"
+              />
+            ),
+          },
+          {
+            key: 'supervisions',
+            label: 'Hướng dẫn',
+            children: (
+              <DataTab
+                loading={loading}
+                data={supervisions}
+                columns={supervisionColumns}
+                onAdd={() => openItem('supervision')}
+                buttonText="Thêm hướng dẫn"
+              />
+            ),
+          },
+        ]}
+      />
 
-      <ProfileModal open={activeModal === 'profile'} onCancel={() => setActiveModal(null)} onOk={saveProfile} form={profileForm} />
-      <ChildModal type={activeModal} open={!!activeModal && activeModal !== 'profile'} onCancel={() => setActiveModal(null)} onOk={() => saveChild(activeModal)} form={childForm} />
-    </>
+      <Modal
+        title="Cập nhật thông tin giảng viên"
+        open={profileOpen}
+        onCancel={() => setProfileOpen(false)}
+        onOk={saveProfile}
+        okText="Lưu"
+        cancelText="Hủy"
+        width={900}
+      >
+        <Form form={profileForm} layout="vertical">
+          <div className="form-grid">
+            <Form.Item label="Học hàm" name="academic_rank">
+              <Select options={[
+                { value: 'GS', label: 'GS' },
+                { value: 'PGS', label: 'PGS' },
+                { value: '', label: 'Không' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item label="Học vị" name="degree">
+              <Select options={[
+                { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+                { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+                { value: 'Cử nhân', label: 'Cử nhân' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item label="Điện thoại" name="phone">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="Đơn vị" name="department">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="Chuyên môn" name="specialization">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="ORCID" name="orcid">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="Scopus ID" name="scopus_id">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="Google Scholar" name="google_scholar">
+              <Input />
+            </Form.Item>
+
+            <Form.Item label="Hướng nghiên cứu" name="research_interests" className="full">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+
+            <Form.Item label="Tiểu sử khoa học" name="biography" className="full">
+              <Input.TextArea rows={4} />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
+
+      <ItemModal
+        type={modalType}
+        open={!!modalType}
+        form={itemForm}
+        onCancel={() => {
+          setModalType(null)
+          setEditing(null)
+        }}
+        onOk={saveItem}
+      />
+    </div>
   )
 }
 
-const modalTableMap = {
-  education: tables.education,
-  employment: tables.employment,
-  language: tables.languages,
-  certificate: tables.certificates,
-  award: tables.awards,
-  document: tables.documents,
-}
-
-function ProfileInfo({ faculty }) {
-  const rows = [
-    ['Mã giảng viên', pick(faculty, ['faculty_code'], '')],
-    ['Họ tên', pick(faculty, ['full_name', 'name'], '')],
-    ['Học hàm', pick(faculty, ['academic_rank'], '')],
-    ['Học vị', pick(faculty, ['degree'], '')],
-    ['Email', pick(faculty, ['email'], '')],
-    ['Điện thoại', pick(faculty, ['phone'], '')],
-    ['ORCID', pick(faculty, ['orcid'], '')],
-    ['Scopus ID', pick(faculty, ['scopus_id'], '')],
-    ['Google Scholar', pick(faculty, ['google_scholar'], '')],
-    ['WoS Researcher ID', pick(faculty, ['wos_researcher_id'], '')],
-    ['Website cá nhân', pick(faculty, ['personal_website'], '')],
-    ['Chuyên môn', pick(faculty, ['specialization'], '')],
-    ['Hướng nghiên cứu', pick(faculty, ['research_interests'], '')],
-    ['Tiểu sử khoa học', pick(faculty, ['biography'], '')],
-  ]
-  return <Card><Table rowKey={(r) => r[0]} showHeader={false} pagination={false} columns={[{ dataIndex: 0, width: 220, render: (v) => <b>{v}</b> }, { dataIndex: 1 }]} dataSource={rows} /></Card>
-}
-
-function DataTab({ loading, data, columns, onAdd, onExport }) {
+function DataTab({ loading, data, columns, onAdd, buttonText }) {
   return (
     <>
       <Card className="toolbar-card" style={{ marginBottom: 16 }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>Thêm</Button>
-          <Button icon={<DownloadOutlined />} onClick={onExport}>Xuất CSV</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+            {buttonText}
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => window.location.reload()}>
+            Tải lại
+          </Button>
         </Space>
       </Card>
+
       <Card className="table-card">
-        <Table rowKey="id" loading={loading} columns={columns} dataSource={data} pagination={{ pageSize: 8 }} scroll={{ x: 1200 }} />
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{ pageSize: 8 }}
+          scroll={{ x: 1000 }}
+        />
       </Card>
     </>
   )
 }
 
-function Actions({ onEdit, onDelete }) {
-  return <Space><Button icon={<EditOutlined />} onClick={onEdit}>Sửa</Button><Popconfirm title="Xóa dòng này?" onConfirm={onDelete}><Button danger icon={<DeleteOutlined />}>Xóa</Button></Popconfirm></Space>
-}
-
-function educationColumns(openChild, removeChild) {
-  return [
-    { title: 'Từ năm', dataIndex: 'from_year', width: 100 },
-    { title: 'Đến năm', dataIndex: 'to_year', width: 100 },
-    { title: 'Trường', dataIndex: 'institution' },
-    { title: 'Quốc gia', dataIndex: 'country', width: 120 },
-    { title: 'Bậc/Văn bằng', dataIndex: 'degree', width: 150 },
-    { title: 'Ngành', dataIndex: 'major' },
-    { title: 'Chuyên ngành', dataIndex: 'specialization' },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('education', r)} onDelete={() => removeChild(tables.education, r.id)} /> },
-  ]
-}
-function employmentColumns(openChild, removeChild) {
-  return [
-    { title: 'Từ ngày', dataIndex: 'from_date', width: 120 },
-    { title: 'Đến ngày', dataIndex: 'to_date', width: 120 },
-    { title: 'Đơn vị', dataIndex: 'organization' },
-    { title: 'Bộ môn', dataIndex: 'department' },
-    { title: 'Chức vụ', dataIndex: 'position' },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('employment', r)} onDelete={() => removeChild(tables.employment, r.id)} /> },
-  ]
-}
-function languageColumns(openChild, removeChild) {
-  return [
-    { title: 'Ngoại ngữ', dataIndex: 'language' },
-    { title: 'Trình độ', dataIndex: 'level' },
-    { title: 'Chứng chỉ', dataIndex: 'certificate' },
-    { title: 'Điểm', dataIndex: 'score', width: 100 },
-    { title: 'Ngày cấp', dataIndex: 'issue_date', width: 120 },
-    { title: 'Hết hạn', dataIndex: 'expiry_date', width: 120 },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('language', r)} onDelete={() => removeChild(tables.languages, r.id)} /> },
-  ]
-}
-function certificateColumns(openChild, removeChild) {
-  return [
-    { title: 'Tên chứng chỉ', dataIndex: 'certificate_name' },
-    { title: 'Đơn vị cấp', dataIndex: 'issuer' },
-    { title: 'Số hiệu', dataIndex: 'certificate_no' },
-    { title: 'Ngày cấp', dataIndex: 'issue_date' },
-    { title: 'Hết hạn', dataIndex: 'expiry_date' },
-    { title: 'File', dataIndex: 'file_url', render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Mở</a> : '' },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('certificate', r)} onDelete={() => removeChild(tables.certificates, r.id)} /> },
-  ]
-}
-function awardColumns(openChild, removeChild) {
-  return [
-    { title: 'Tên giải thưởng', dataIndex: 'award_name' },
-    { title: 'Đơn vị', dataIndex: 'organization' },
-    { title: 'Ngày', dataIndex: 'award_date' },
-    { title: 'Mô tả', dataIndex: 'description' },
-    { title: 'File', dataIndex: 'file_url', render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Mở</a> : '' },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('award', r)} onDelete={() => removeChild(tables.awards, r.id)} /> },
-  ]
-}
-function documentColumns(openChild, removeChild) {
-  return [
-    { title: 'Loại tài liệu', dataIndex: 'document_type', render: (v) => <Tag color="blue">{v}</Tag> },
-    { title: 'Tên file', dataIndex: 'file_name' },
-    { title: 'Link', dataIndex: 'file_url', render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Mở file</a> : '' },
-    { title: 'Ghi chú', dataIndex: 'note' },
-    { title: 'Thao tác', width: 160, render: (_, r) => <Actions onEdit={() => openChild('document', r)} onDelete={() => removeChild(tables.documents, r.id)} /> },
-  ]
-}
-
-function ProfileModal({ open, onCancel, onOk, form }) {
-  return (
-    <Modal title="Cập nhật hồ sơ giảng viên" open={open} onCancel={onCancel} onOk={onOk} okText="Lưu" cancelText="Hủy" width={900}>
-      <Form form={form} layout="vertical">
-        <div className="form-grid">
-          <Form.Item name="email" label="Email"><Input /></Form.Item>
-          <Form.Item name="phone" label="Điện thoại"><Input /></Form.Item>
-          <Form.Item name="academic_rank" label="Học hàm"><Input /></Form.Item>
-          <Form.Item name="degree" label="Học vị"><Input /></Form.Item>
-          <Form.Item name="avatar_url" label="Ảnh đại diện URL"><Input /></Form.Item>
-          <Form.Item name="specialization" label="Chuyên môn"><Input /></Form.Item>
-          <Form.Item name="orcid" label="ORCID"><Input /></Form.Item>
-          <Form.Item name="scopus_id" label="Scopus ID"><Input /></Form.Item>
-          <Form.Item name="google_scholar" label="Google Scholar"><Input /></Form.Item>
-          <Form.Item name="wos_researcher_id" label="WoS Researcher ID"><Input /></Form.Item>
-          <Form.Item name="researchgate" label="ResearchGate"><Input /></Form.Item>
-          <Form.Item name="personal_website" label="Website cá nhân"><Input /></Form.Item>
-          <Form.Item name="research_interests" label="Hướng nghiên cứu" className="full"><Input.TextArea rows={3} /></Form.Item>
-          <Form.Item name="biography" label="Tiểu sử khoa học" className="full"><Input.TextArea rows={4} /></Form.Item>
-        </div>
-      </Form>
-    </Modal>
-  )
-}
-
-function ChildModal({ type, open, onCancel, onOk, form }) {
+function ItemModal({ type, open, onCancel, onOk, form }) {
   const titleMap = {
-    education: 'Quá trình đào tạo', employment: 'Quá trình công tác', language: 'Ngoại ngữ', certificate: 'Chứng chỉ', award: 'Giải thưởng', document: 'Hồ sơ số',
+    publication: 'Công bố khoa học',
+    project: 'Đề tài nghiên cứu',
+    supervision: 'Hướng dẫn học viên/NCS',
   }
+
   return (
-    <Modal title={titleMap[type] || ''} open={open} onCancel={onCancel} onOk={onOk} okText="Lưu" cancelText="Hủy" width={900}>
+    <Modal
+      title={titleMap[type] || ''}
+      open={open}
+      onCancel={onCancel}
+      onOk={onOk}
+      okText="Lưu"
+      cancelText="Hủy"
+      width={850}
+    >
       <Form form={form} layout="vertical">
-        {type === 'education' && <div className="form-grid">
-          <Form.Item name="from_year" label="Từ năm"><InputNumber style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="to_year" label="Đến năm"><InputNumber style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="institution" label="Trường/Viện"><Input /></Form.Item>
-          <Form.Item name="country" label="Quốc gia"><Input /></Form.Item>
-          <Form.Item name="degree" label="Bậc/Văn bằng"><Select options={[{ value: 'Đại học' }, { value: 'Thạc sĩ' }, { value: 'Tiến sĩ' }, { value: 'Sau tiến sĩ' }, { value: 'Khác' }]} /></Form.Item>
-          <Form.Item name="major" label="Ngành"><Input /></Form.Item>
-          <Form.Item name="specialization" label="Chuyên ngành"><Input /></Form.Item>
-          <Form.Item name="thesis_title" label="Tên luận văn/luận án" className="full"><Input /></Form.Item>
-        </div>}
-        {type === 'employment' && <div className="form-grid">
-          <Form.Item name="from_date" label="Từ ngày"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="to_date" label="Đến ngày"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="organization" label="Đơn vị"><Input /></Form.Item>
-          <Form.Item name="department" label="Bộ môn/Phòng"><Input /></Form.Item>
-          <Form.Item name="position" label="Chức vụ"><Input /></Form.Item>
-          <Form.Item name="description" label="Mô tả" className="full"><Input.TextArea rows={3} /></Form.Item>
-        </div>}
-        {type === 'language' && <div className="form-grid">
-          <Form.Item name="language" label="Ngoại ngữ"><Input /></Form.Item>
-          <Form.Item name="level" label="Trình độ"><Input placeholder="VD: B2, C1, IELTS 7.0" /></Form.Item>
-          <Form.Item name="certificate" label="Chứng chỉ"><Input /></Form.Item>
-          <Form.Item name="score" label="Điểm"><Input /></Form.Item>
-          <Form.Item name="issue_date" label="Ngày cấp"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="expiry_date" label="Hết hạn"><DatePicker style={{ width: '100%' }} /></Form.Item>
-        </div>}
-        {type === 'certificate' && <div className="form-grid">
-          <Form.Item name="certificate_name" label="Tên chứng chỉ"><Input /></Form.Item>
-          <Form.Item name="issuer" label="Đơn vị cấp"><Input /></Form.Item>
-          <Form.Item name="certificate_no" label="Số hiệu"><Input /></Form.Item>
-          <Form.Item name="issue_date" label="Ngày cấp"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="expiry_date" label="Hết hạn"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="file_url" label="Link minh chứng" className="full"><Input /></Form.Item>
-        </div>}
-        {type === 'award' && <div className="form-grid">
-          <Form.Item name="award_name" label="Tên giải thưởng"><Input /></Form.Item>
-          <Form.Item name="organization" label="Đơn vị trao"><Input /></Form.Item>
-          <Form.Item name="award_date" label="Ngày"><DatePicker style={{ width: '100%' }} /></Form.Item>
-          <Form.Item name="file_url" label="Link minh chứng"><Input /></Form.Item>
-          <Form.Item name="description" label="Mô tả" className="full"><Input.TextArea rows={3} /></Form.Item>
-        </div>}
-        {type === 'document' && <div className="form-grid">
-          <Form.Item name="document_type" label="Loại tài liệu"><Select options={[{ value: 'CV' }, { value: 'Bằng cấp' }, { value: 'Chứng chỉ' }, { value: 'Ảnh' }, { value: 'Chữ ký' }, { value: 'Minh chứng khác' }]} /></Form.Item>
-          <Form.Item name="file_name" label="Tên file"><Input /></Form.Item>
-          <Form.Item name="file_url" label="Link file" className="full"><Input /></Form.Item>
-          <Form.Item name="note" label="Ghi chú" className="full"><Input.TextArea rows={3} /></Form.Item>
-        </div>}
+        {type === 'publication' && (
+          <div className="form-grid">
+            <Form.Item
+              name="title"
+              label="Tên công bố"
+              className="full"
+              rules={[{ required: true, message: 'Nhập tên công bố' }]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="journal" label="Tên tạp chí/hội thảo">
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="year" label="Năm">
+              <InputNumber style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item name="quartile" label="Xếp hạng">
+              <Select options={[
+                { value: 'Q1', label: 'Q1' },
+                { value: 'Q2', label: 'Q2' },
+                { value: 'Q3', label: 'Q3' },
+                { value: 'Q4', label: 'Q4' },
+                { value: 'Scopus', label: 'Scopus' },
+                { value: 'WoS', label: 'WoS' },
+                { value: 'Khác', label: 'Khác' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="indexed" label="Chỉ mục">
+              <Select options={[
+                { value: 'Scopus', label: 'Scopus' },
+                { value: 'WoS', label: 'WoS' },
+                { value: 'Scopus/WoS', label: 'Scopus/WoS' },
+                { value: 'Khác', label: 'Khác' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="doi" label="DOI/Link">
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="authors" label="Tác giả" className="full">
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="points" label="Điểm NCKH">
+              <InputNumber style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item name="note" label="Ghi chú" className="full">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
+        )}
+
+        {type === 'project' && (
+          <div className="form-grid">
+            <Form.Item
+              name="project_name"
+              label="Tên đề tài"
+              className="full"
+              rules={[{ required: true, message: 'Nhập tên đề tài' }]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="role" label="Vai trò">
+              <Select options={[
+                { value: 'Chủ nhiệm', label: 'Chủ nhiệm' },
+                { value: 'Thành viên', label: 'Thành viên' },
+                { value: 'Thư ký', label: 'Thư ký' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="level" label="Cấp đề tài">
+              <Select options={[
+                { value: 'Cấp cơ sở', label: 'Cấp cơ sở' },
+                { value: 'Cấp Bộ', label: 'Cấp Bộ' },
+                { value: 'Cấp Nhà nước', label: 'Cấp Nhà nước' },
+                { value: 'Khác', label: 'Khác' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="start_year" label="Năm bắt đầu">
+              <InputNumber style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item name="end_year" label="Năm kết thúc">
+              <InputNumber style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item name="status" label="Trạng thái">
+              <Select options={[
+                { value: 'Đang thực hiện', label: 'Đang thực hiện' },
+                { value: 'Đã nghiệm thu', label: 'Đã nghiệm thu' },
+                { value: 'Tạm dừng', label: 'Tạm dừng' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="note" label="Ghi chú" className="full">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </div>
+        )}
+
+        {type === 'supervision' && (
+          <div className="form-grid">
+            <Form.Item
+              name="student_name"
+              label="Tên người học"
+              rules={[{ required: true, message: 'Nhập tên người học' }]}
+            >
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="student_type" label="Loại người học">
+              <Select options={[
+                { value: 'Học viên cao học', label: 'Học viên cao học' },
+                { value: 'Nghiên cứu sinh', label: 'Nghiên cứu sinh' },
+                { value: 'Sinh viên đại học', label: 'Sinh viên đại học' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="role" label="Vai trò">
+              <Select options={[
+                { value: 'Hướng dẫn chính', label: 'Hướng dẫn chính' },
+                { value: 'Hướng dẫn phụ', label: 'Hướng dẫn phụ' },
+              ]} />
+            </Form.Item>
+
+            <Form.Item name="year" label="Năm">
+              <InputNumber style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item name="thesis_title" label="Tên đề tài luận văn/luận án" className="full">
+              <Input />
+            </Form.Item>
+
+            <Form.Item name="status" label="Trạng thái">
+              <Select options={[
+                { value: 'Đang hướng dẫn', label: 'Đang hướng dẫn' },
+                { value: 'Đã bảo vệ', label: 'Đã bảo vệ' },
+                { value: 'Tạm dừng', label: 'Tạm dừng' },
+              ]} />
+            </Form.Item>
+          </div>
+        )}
       </Form>
     </Modal>
   )
